@@ -1,0 +1,378 @@
+{
+ "cells": [
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "0c2fe7c1-60d3-446f-92c0-c774500e78e9",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import pandas as pd\n",
+    "import matplotlib.pyplot as plt\n",
+    "from tensorflow import strings\n",
+    "from tensorflow.io import read_file, decode_image, decode_png, decode_jpeg\n",
+    "from tensorflow.data import Dataset, AUTOTUNE\n",
+    "from tensorflow.keras import Sequential\n",
+    "from tensorflow.keras.layers import Rescaling, Resizing, Conv2D, MaxPooling2D, Flatten, Dense\n",
+    "from tensorflow.keras.losses import SparseCategoricalCrossentropy\n",
+    "from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping\n",
+    "from tensorflow.dtypes import int32\n",
+    "from tensorflow.image import resize\n",
+    "import datetime\n",
+    "from tensorflow.keras.callbacks import TensorBoard\n",
+    "from sklearn.model_selection import train_test_split"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "b6e34365-daa5-45a6-b9fd-a07caf00e0df",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "components = {\"file_name\":0, \"family_id\": 1, \"count\": 2, \"normalized_family_id\": 3}"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "f5c94be2-0beb-4320-abe4-4ee77168c0c5",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "IMG_HEIGHT=224\n",
+    "IMG_WIDTH=224\n",
+    "#NUM_CLASSES=75\n",
+    "BATCH_SIZE=32"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "96e78d33-f3c9-4fe8-898b-426053095aee",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "PATH =\"../../raw_data/processed_files/\""
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "60a7edd5-9af3-4e6c-9cdf-33ec458c6ba4",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "CROP_FILE_CSV=\"./crop_labeled_simplified.csv\""
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "0e125084-aafa-406e-ae84-b261b1861304",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def preprocess_files(filename, threshold_families, threshold_balance, proportion):\n",
+    "    df = pd.read_csv(filename, delimiter=\",\", encoding=\"latin\")\n",
+    "    df = remove_small_families(df,threshold_families)\n",
+    "    df = cut_big_classes(df,threshold_balance,proportion)\n",
+    "\n",
+    "    nb_families = df['family_id'].nunique()\n",
+    "    #nb_families = df['family_id'].max() +1\n",
+    "    print(f\"number of families:{nb_families}\")\n",
+    "    \n",
+    "    #scale the family_id to be between 0 and 20\n",
+    "    # print(df.head())\n",
+    "    df1 = pd.DataFrame(df['family_id'].value_counts())\n",
+    "    \n",
+    "    df1[\"raw_family_id\"]=df1.index\n",
+    "    df1.reset_index(inplace=True)\n",
+    "\n",
+    "    df1[\"normalized_family_id\"]=df1.index\n",
+    "    df1.drop(columns=[\"family_id\"], axis=1, inplace=True)    \n",
+    "    df1.rename(columns={\"raw_family_id\":\"family_id\"}, inplace=True)   \n",
+    "    #df1.drop(columns=[\"index\"], axis=1, inplace=True)\n",
+    "    df = df.merge(df1, on='family_id', how='outer')\n",
+    "    \n",
+    "    df_train, df_test = train_test_split(df, stratify=df.loc[:,\"normalized_family_id\"])\n",
+    "    df_train, df_val = train_test_split(df_train, stratify=df_train.loc[:,\"normalized_family_id\"])\n",
+    "    print(f\"train:{df_train.shape}\")\n",
+    "    print(f\"val:{df_val.shape}\")\n",
+    "    print(f\"test:{df_test.shape}\")\n",
+    "    return nb_families, get_dataset_from_df(df_train), get_dataset_from_df(df_val), get_dataset_from_df(df_test)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "a4d62c23-7663-4488-a673-bd1c8fff152c",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def remove_small_families(dataframe, treshold):\n",
+    "    '''removes the classes that have a number of occurences lower than a specified treshold'''\n",
+    "    value_counts = pd.DataFrame(dataframe.family_id.value_counts(sort=True, ascending=False))\n",
+    "    value_counts.reset_index(inplace=True)\n",
+    "    df = value_counts[value_counts[\"count\"].astype(int)>treshold]\n",
+    "    df2 = dataframe.merge(df, how='inner', on='family_id')\n",
+    "    df2.drop(columns=[\"count\"], inplace=True)\n",
+    "    return df2"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "b29bb818-71a4-49d7-ad3b-a6a80a85500c",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def cut_big_classes(dataframe, treshold : int, proportion : float):\n",
+    "    '''classes above a treshold get cut in a proportion'''\n",
+    "    dataframe = dataframe.sample(frac=1)\n",
+    "    value_counts = pd.DataFrame(dataframe.family_id.value_counts(sort=True, ascending=False))\n",
+    "    value_counts.rename(columns={\"family_id\": \"count\"}, inplace=True)\n",
+    "    value_counts['family_id']=value_counts.index\n",
+    "    ls = value_counts[ value_counts[\"count\"] > treshold][\"family_id\"].tolist()\n",
+    "    for l in ls:\n",
+    "        big_family_indices = dataframe.index[dataframe['family_id'] == l]\n",
+    "        dataframe = dataframe.drop(big_family_indices[:int(len(big_family_indices) * proportion)])\n",
+    "    return dataframe"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "6995a6e3-c7e4-4444-af7f-96d90efd0792",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def get_label(record, component=\"normalized_family_id\"):\n",
+    "  position = components[component]\n",
+    "  label = record[position]\n",
+    "  return strings.to_number(label, out_type=int32)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "2e87d56c-6c41-46bc-b51b-2aa4b3a11584",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def get_image(record):\n",
+    "  image_name = record[0]\n",
+    "  file_path = strings.join([PATH, image_name])\n",
+    "  file = read_file(file_path)\n",
+    "  image = decode_png(file)\n",
+    "  return resize(image, size=(IMG_HEIGHT, IMG_WIDTH))/255"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "9241b673-8806-4e3b-a436-fa780ce6c980",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def process_record(record):\n",
+    "    label = get_label(record, component=\"normalized_family_id\")\n",
+    "    image = get_image(record)\n",
+    "    return image, label"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "87a2c447-9626-49ef-abfd-98277949a7ca",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def get_image(record):\n",
+    "    \n",
+    "    image_name = record[0]\n",
+    "    file_path = tf.strings.join([PATH, image_name])\n",
+    "    file = tf.io.read_file(file_path)\n",
+    "    image = tf.image.decode_png(file, channels=3)  # Ensure 3 channels for RGB\n",
+    "    image = tf.image.resize(image, (IMG_HEIGHT, IMG_WIDTH))\n",
+    "    image /= 255.0  # Normalize pixel values to [0, 1]\n",
+    "    return image"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "9b379a75-c9f6-4b30-a48a-2c4cd0f1badc",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def get_model(nb_families):\n",
+    "    model = Sequential([\n",
+    "      Conv2D(16, 3, padding='same', activation='relu', input_shape=(IMG_HEIGHT, IMG_WIDTH, 3)),\n",
+    "      MaxPooling2D(),\n",
+    "      Conv2D(32, 3, padding='same', activation='relu'),\n",
+    "      MaxPooling2D(),\n",
+    "      Conv2D(64, 3, padding='same', activation='relu'),\n",
+    "      MaxPooling2D(),\n",
+    "      Flatten(),\n",
+    "      Dense(75, activation='relu'),\n",
+    "      Dense(nb_families, activation='softmax')\n",
+    "    ])\n",
+    "    return model"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "b87802ed-5711-4a9c-9bcf-edf19d91d108",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def compile_model(model):\n",
+    "    model.compile(optimizer='adam',\n",
+    "              loss=SparseCategoricalCrossentropy(from_logits=False),\n",
+    "              metrics=['accuracy'])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "c5fd0f17-01e4-4fa6-bd59-fa98901ee0a8",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def get_dataset_from_df(df):\n",
+    "    X = df.astype(str)\n",
+    "    ds = Dataset.from_tensor_slices(X)\n",
+    "    processed_ds = ds.map(process_record, num_parallel_calls=AUTOTUNE)\n",
+    "    # manage caches\n",
+    "    #dataset = processed_ds.cache().batch(BATCH_SIZE).prefetch(buffer_size=AUTOTUNE)\n",
+    "    dataset = processed_ds.batch(BATCH_SIZE).prefetch(buffer_size=AUTOTUNE)\n",
+    "    return dataset"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "9c15e2bc-8919-4abe-abb9-18210315593d",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def get_dataset(filename):\n",
+    "    # Read CSV file containing the cropped images details\n",
+    "    df = pd.read_csv(filename, delimiter=\",\", encoding=\"latin\", header=0)\n",
+    "    return get_dataset_from_df(df)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "2cb8ae00-e1ce-49ab-b7d9-f7704b54b2f4",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "if __name__ == '__main__':\n",
+    "    # Generate the TF datasets for train and val\n",
+    "    # each dataset element is an image and a label (family)\n",
+    "    # an image has a variable width and height (it is a cropped image from a whole frame)\n",
+    "    # train_ds = get_dataset(\"./train_crop_label.csv\")\n",
+    "    # val_ds = get_dataset(\"./val_crop_label.csv\") #(\"./val_crop_sample.csv\")\n",
+    "    nb_families, train_ds, val_ds, test_ds = preprocess_files(CROP_FILE_CSV, 150, 3000, 0.7)\n",
+    "    # nb_families=75 # why ?\n",
+    "    # TEST: retrieve 1st tf train record\n",
+    "    # for image, label in train_ds.take(1):\n",
+    "    #     #print(image[0].shape)\n",
+    "    #     plt.imshow(resize(image[1], (IMG_HEIGHT, IMG_WIDTH)))\n",
+    "    #     #print(type(image))\n",
+    "    #     #plt.title(label[0])\n",
+    "    # plt.show()\n",
+    "    # Train the model\n",
+    "    model = get_model(nb_families)\n",
+    "    compile_model(model)\n",
+    "    print(model.summary())\n",
+    "    # Checkpoint to save intermediary weights\n",
+    "    checkpoint_filepath = './tmp/checkpoint'\n",
+    "    model_checkpoint_callback = ModelCheckpoint(\n",
+    "        filepath=checkpoint_filepath,\n",
+    "        save_weights_only=True,\n",
+    "        monitor='val_accuracy',\n",
+    "        mode='max',\n",
+    "        save_best_only=True)\n",
+    "    # Early Stopper\n",
+    "    early_stopper = EarlyStopping(patience = 10,\n",
+    "        monitor=\"val_loss\",\n",
+    "        restore_best_weights=True)\n",
+    "    # Tensor Board\n",
+    "    log_folder = \"logs/fit/\" + datetime.datetime.now().strftime(\"%Y%m%d-%H%M%S\")\n",
+    "    tensorBoard = TensorBoard(log_dir=log_folder,\n",
+    "                         histogram_freq=1,\n",
+    "                         write_graph=True,\n",
+    "                         write_images=True,\n",
+    "                         update_freq='epoch',\n",
+    "                         profile_batch=2,\n",
+    "                         embeddings_freq=1)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "cbcbec13-8dd3-43d0-bbeb-2daee0755c58",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Fit model\n",
+    "history = model.fit(\n",
+    "        train_ds,\n",
+    "        validation_data=val_ds,\n",
+    "        epochs=3,\n",
+    "        callbacks=[model_checkpoint_callback, early_stopper, tensorBoard],\n",
+    "        batch_size=BATCH_SIZE\n",
+    "        )"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "18685dad-c14b-420d-ad7f-4ea1154a8961",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "model.evaluate(test_ds)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "a814d9dc-a5ca-48c3-b178-5692f3336d87",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Save the entire model as a `.keras` zip archive.\n",
+    "model_folder = \"models/\" + datetime.datetime.now().strftime(\"%Y%m%d-%H%M%S\")\n",
+    "\n",
+    "model.save(model_folder+'crop_model.keras')"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3 (ipykernel)",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.10.6"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 5
+}
