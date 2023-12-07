@@ -9,10 +9,6 @@ app = FastAPI()
 model= YOLO("./best.pt")
 
 # Define a root `/` endpoint
-@app.get('/')
-def index():
-    return [{"xmin":100,"ymin":100,"xmax":200,"ymax":200,"confidence":0.76,"class":12,"name":"poisson-clown"},
- {"xmin":25,"ymin":25,"xmax":50,"ymax":50,"confidence":0.76,"class":13,"name":"nemo"}]
 
 @app.get("/ping")
 def root():
