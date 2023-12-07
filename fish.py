@@ -118,7 +118,6 @@ class Fish:
         # Load the YOLO model for Bbox localization
         yolo_model = YOLO(self.LOCALIZATION_MODEL)  # reuse fish trained model
         results = yolo_model(source=image)  # predict on an image
-        print("--------------------------- ICI", self.CLASSIFICATION_MODEL)
         # Load the KERAS model for Bbox content classification
         fish_classification_model = load_model(self.CLASSIFICATION_MODEL)
         # fish_classification_model.summary()
