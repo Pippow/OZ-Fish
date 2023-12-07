@@ -4,30 +4,26 @@ import numpy as np
 import datetime
 
 import matplotlib.pyplot as plt
-import matplotlib.image as mpimg
-import matplotlib.pyplot as plt
 import seaborn as sns
 
 
 from tensorflow import strings, reshape
-from tensorflow.io import read_file, decode_image, decode_png, decode_jpeg
+from tensorflow.io import read_file, decode_png
 from tensorflow.data import Dataset, AUTOTUNE
 from tensorflow.keras import Sequential
-from tensorflow.keras.layers import Rescaling, Resizing, Conv2D, MaxPooling2D, Flatten, Dense
-from tensorflow.keras.losses import SparseCategoricalCrossentropy, CategoricalCrossentropy
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense
+from tensorflow.keras.losses import SparseCategoricalCrossentropy
 from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping
 from tensorflow.dtypes import int32
 from tensorflow.image import resize
 from tensorflow.keras.callbacks import TensorBoard
-from tensorflow.keras.utils import img_to_array
 from tensorflow.math import confusion_matrix, reduce_sum
 
-from keras.models import load_model
+from tensorflow.keras.models import load_model
 from sklearn.model_selection import train_test_split
 
 # import tensorflow as tf
 from ultralytics import YOLO
-from PIL import Image
 
 
 class Fish:

@@ -1,8 +1,6 @@
 import streamlit as st
 from PIL import Image, ImageDraw, ImageFont
 import requests
-import base64
-import json
 
 def load_image(image_file):
     img = Image.open(image_file)

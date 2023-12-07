@@ -1,11 +1,8 @@
 from fastapi import FastAPI, UploadFile, File
 from fish import Fish
 from ultralytics import YOLO
-import torch
 from PIL import Image
-import json
 from io import BytesIO
-import matplotlib.image as mpimg
 
 
 app = FastAPI()

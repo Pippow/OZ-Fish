@@ -1,5 +1,12 @@
-uvicorn
+pandas
+numpy
 requests
 Pillow
 fastapi
-ultralytics
+seaborn
+pydantic
+python-multipart
+tensorflow
+uvicorn
+scikit-learn
+dill
