@@ -51,7 +51,7 @@ class Fish:
         self.BATCH_SIZE = int(os.environ["BATCH_SIZE"])
         self.LOCALIZATION_MODEL=str(os.environ["LOCALIZATION_MODEL"])
         self.CLASSIFICATION_MODEL=str(os.environ["CLASSIFICATION_MODEL"])
-        self.CROP_PATH=str(os.environ["CROP_PATH"])
+        #self.CROP_PATH=str(os.environ["CROP_PATH"])
         self.BAD_CLASSES=os.environ["BAD_CLASSES"].split(",")
 
         self.__preprocess(filename, threshold_families, threshold_balance, proportion)
@@ -241,12 +241,12 @@ class Fish:
 
     def __remove_small_families(self, dataframe, treshold):
         '''removes the classes that have a number of occurences lower than a specified treshold'''
-        value_counts = pd.DataFrame(dataframe.family.value_counts(sort=True, ascending=False))
-        value_counts.rename(columns={"family": "count"}, inplace=True)
-        value_counts['family']=value_counts.index
-        value_counts.drop(value_counts[value_counts['count'] < treshold].index, inplace = True)
-        dataframe = dataframe.merge(value_counts, how = 'inner', on = 'family')
-        return dataframe
+        value_counts = pd.DataFrame(dataframe.family_id.value_counts(sort=True, ascending=False))
+        value_counts.reset_index(inplace=True)
+        df = value_counts[value_counts["count"].astype(int)>treshold]
+        df2 = dataframe.merge(df, how='inner', on='family_id')
+        df2.drop(columns=["count"], inplace=True)
+        return df2
     def __cut_big_classes(self, dataframe, treshold : int, proportion : float):
         '''classes above a treshold get cut in a proportion'''
         dataframe = dataframe.sample(frac=1)
@@ -274,7 +274,7 @@ class Fish:
     def __get_image(self, record, component="file_name"):
         position = self.columns[component]
         image_name = record[position]
-        file_path = strings.join([self.CROP_PATH, image_name])
+        file_path = strings.join([image_name])
         file = read_file(file_path)
         image = decode_png(file)
         return resize(image, size=(self.IMG_HEIGHT, self.IMG_WIDTH))/255

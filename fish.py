@@ -52,11 +52,11 @@ class Fish:
         self.IMG_WIDTH = int(os.environ["IMG_WIDTH"])
         self.EPOCHS = int(os.environ["EPOCHS"])
         self.BATCH_SIZE = int(os.environ["BATCH_SIZE"])
-        self.LOCALIZATION_MODEL=str(os.environ["LOCALIZATION_MODEL"])
-        self.CLASSIFICATION_MODEL=str(os.environ["CLASSIFICATION_MODEL"])
+        self.LOCALIZATION_MODEL = str(os.environ["LOCALIZATION_MODEL"])
+        self.CLASSIFICATION_MODEL = str(os.environ["CLASSIFICATION_MODEL"])
         self.SAVED_KERAS_FILE=str(os.environ["SAVED_KERAS_FILE"])
-        self.CROP_PATH=str(os.environ["CROP_PATH"])
-        self.BAD_CLASSES=os.environ["BAD_CLASSES"].split(",")
+        self.CROP_PATH = str(os.environ["CROP_PATH"])
+        self.BAD_CLASSES = os.environ["BAD_CLASSES"].split(",")
 
         self.__preprocess(filename, threshold_families, threshold_balance, proportion)
 
@@ -118,7 +118,7 @@ class Fish:
         # Load the YOLO model for Bbox localization
         yolo_model = YOLO(self.LOCALIZATION_MODEL)  # reuse fish trained model
         results = yolo_model(source=image)  # predict on an image
-
+        print("--------------------------- ICI", self.CLASSIFICATION_MODEL)
         # Load the KERAS model for Bbox content classification
         fish_classification_model = load_model(self.CLASSIFICATION_MODEL)
         # fish_classification_model.summary()
